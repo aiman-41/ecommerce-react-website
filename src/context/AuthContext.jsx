@@ -1,51 +1,91 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
 
-
-export const AuthContext = createContext(localStorage.getItem("currentUserEmail") ? { email: localStorage.getItem("currentUserEmail") } : null);
+export const AuthContext = createContext();
 
 export default function AuthProvider({ children }) {
-  const [user, setUser] = useState(
-    localStorage.getItem("currentUserEmail") ? { email: localStorage.getItem("currentUseremail") } : null
-  );
+  const [user, setUser] = useState(null);
 
-  function signUp(email, password) {
-    const users = JSON.parse(localStorage.getItem('users')) || [];
+  useEffect(() => {
+    // Check if a user is already logged in
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
 
-    if (users.find(u => u.email === email)) {
-      return { success: false, error: "Email already exists" };
+    // Listen for login/logout
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function signUp(email, password) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
     }
-    const newUser = { email, password };
-    users.push(newUser)
-    localStorage.setItem("users", JSON.stringify(users));
-    localStorage.setItem("currentUserEmail", email);
 
-    setUser({ email });
+    setUser(data.user);
 
-    return { success: true };
+    return {
+      success: true,
+    };
   }
-  function login(email, password) {
-    const users = JSON.parse(localStorage.getItem("users")) || [];
-    const user = users.find((u) => u.email === email && u.password === password);
 
-    if (!user) {
-      return { success: false, error: "Invalid email or password" };
+  async function login(email, password) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
     }
 
-    localStorage.setItem("currentUserEmail", email);
-    setUser({ email });
-    return { success: true }
+    setUser(data.user);
+
+    return {
+      success: true,
+    };
   }
 
-  function logout() {
-    localStorage.removeItem("currentUserEmail");
+  async function logout() {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
     setUser(null);
+
+    return {
+      success: true,
+    };
   }
 
-  return <AuthContext.Provider value={{ signUp, user, logout, login }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, signUp, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-
-  return context;
+  return useContext(AuthContext);
 }

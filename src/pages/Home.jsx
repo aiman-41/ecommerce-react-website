@@ -16,7 +16,6 @@ export default function Home() {
           <ProductCard product={product} key={product.id} />
         ))}
       </div>
-
     </div>
   </div>
 }
